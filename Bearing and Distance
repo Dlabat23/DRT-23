@@ -1,8 +1,8 @@
 
-double lat = 32.29760;
-double lon= -90.21230;
-double lat2 = 32.29773;
-double lon2 = -90.21230;
+double lat = 32.28395;
+double lon= -90.00586;
+double lat2 = 32.28385;
+double lon2 = -90.00586;
 
 void setup() {
   Serial.begin(115200);
@@ -11,7 +11,7 @@ void setup() {
 
 void loop() {
   Serial.println(bearing(lat, lon, lat2, lon2));
-  Serial.println(distance(lat, lon, lat2, lon2));
+ 
 }
 
 float bearing(float lat,float lon,float lat2,float lon2){
@@ -36,9 +36,5 @@ float bearing(float lat,float lon,float lat2,float lon2){
 
 
   }
-float distance(float lat, float lon, float lat2, float lon2) 
-{ 
-    // Calculating distance 
-    return sqrt(pow(lat2 - lat, 2) + pow(lon2 - lat2, 2) * 1.0); //in unit points
-}
+
 
