@@ -1,0 +1,48 @@
+#include <math.h> 
+
+
+double lat = 32.28395;
+double lon= -90.00586;
+double lat2 = 32.28411;
+double lon2 = -90.00569;
+
+void setup() {
+  Serial.begin(115200);
+
+}
+
+void loop() {
+  Serial.println(distance(lat, lon, lat2, lon2));
+
+}
+float toRadians(const long double degree) 
+{ 
+    float one_deg = (M_PI) / 180; 
+    return (one_deg * degree); 
+} 
+  
+float distance(float lat, float lon, float lat2, float lon2) 
+{ 
+    // Convert the latitudes and longitudes from degree to radians. 
+    lat = toRadians(lat); 
+    lon = toRadians(lon); 
+    lat2 = toRadians(lat2); 
+    lon2 = toRadians(lon2); 
+      
+    // Haversine Formula 
+    float dlon = lon2 - lon; 
+    float dlat = lat2 - lat; 
+  
+    float ans = pow(sin(dlat / 2), 2) + cos(lat) * cos(lat2) * pow(sin(dlon / 2), 2);
+    ans = 2 * asin(sqrt(ans)); 
+  
+    // Radius of Earth in Kilometers, R = 6371 
+    // Use R = 3956 for miles 
+    float R = 6371; 
+      
+    // Calculate the result 
+    float hey = ans * R; 
+    float bye = hey * 3281;  //Converting kilometers to feet
+  
+    return bye; 
+}
