@@ -1,0 +1,382 @@
+#include <TinyGPSPlus.h>
+#include <SoftwareSerial.h>
+#include <Wire.h>
+#include <QMC5883LCompass.h>
+#include <math.h>
+#include <AFMotor.h>
+#include <waypointClass.h>
+
+
+
+
+/*
+   This sample sketch demonstrates the normal use of a TinyGPS++(TinyGPSPlus) object.
+   It requires the use of SoftwareSerial, and assumes that you have a
+   9600-baud serial GPS device hooked up on pins 51(rx) and 49(tx) and a QMC5883 Magnetic Compass
+   connected to the SCL/SDA pins.
+*/
+
+static const int RXPin = 51 , TXPin = 49; // RX and TX pins are reverse on the board RX goto 49 and TX goto 51 
+static const uint32_t GPSBaud = 9600;
+
+// Assign a Unique ID to the QMC5883 Compass Sensor
+QMC5883LCompass compass;
+
+
+// The TinyGPSPlus object
+TinyGPSPlus gps; // The GT-U7 gps 
+
+// The serial connection to the GPS device
+SoftwareSerial ss(RXPin, TXPin);
+
+AF_DCMotor motor1(1); //define motor 1
+AF_DCMotor motor2(2); //define motor 2
+AF_DCMotor motor3(3); //define motor 3
+AF_DCMotor motor4(4); //define motor 4
+
+static const int Bluetooth_RX = 39, Bluetooth_TX = 37; // RX and TX pins are reverse on the board RX goto 37 and TX goto 39 
+static const uint32_t BluetoothBaud = 9600;
+SoftwareSerial bluetooth(Bluetooth_RX, Bluetooth_TX);
+
+
+int targetHeading;
+int currentHeading;
+int headingError;
+#define HEADING_TOLERANCE 25
+
+float currentLat, currentLong, targetLat, targetLong;
+int distanceToTarget, originalDistanceToTarget;
+
+#define WAYPOINT_DIST_TOLERANE 5
+#define NUMBER_WAYPOINTS 1
+int waypointNumber = -1;
+waypointClass waypointList[NUMBER_WAYPOINTS] = {waypointClass(-90.00987, 32.28219)};
+//, waypointClass(-90.212646, 32.299350), waypointClass(-90.212790, 32.299388), waypointClass(-90.212699, 32.299442), waypointClass(-90.212623, 32.299465) 
+
+// unsigned long lastGpsUpdate = 0;
+// unsigned long lastCompassUpdate = 0;
+// const unsigned long gpsUpdateInterval = 1000; // Update GPS every 1 second
+// const unsigned long compassUpdateInterval = 2000; // Update compass every 2 seconds
+
+void setup()
+{
+  Serial.begin(115200);
+  ss.begin(GPSBaud);
+  compass.init();
+
+  Serial.println(F("Simple Test with TinyGPS++ and attached GT-U7 GPS module"));
+  Serial.print(F("Testing TinyGPSPlus library v. ")); Serial.println(TinyGPSPlus::libraryVersion());
+  Serial.println();
+  
+  motor1.setSpeed(255);
+  motor2.setSpeed(255);
+  motor3.setSpeed(255);
+  motor4.setSpeed(255);
+
+  //nextWaypoint();
+}
+
+void loop()
+{
+  //Serial.println("Loop Started");
+   // unsigned long currentMillis = millis();
+
+  // Check if it's time to update the GPS data
+  // if (currentMillis - lastGpsUpdate >= gpsUpdateInterval) 
+  //     lastGpsUpdate = currentMillis;
+
+    // This sketch displays information every time a new sentence is correctly encoded.
+    while (ss.available() > 0)
+    {
+      //Serial.println("Data recieved");
+      if (gps.encode(ss.read()))
+        displayGpsInfo();
+        
+    }
+  
+  // if (currentMillis - lastCompassUpdate >= lastGpsUpdate) {
+  //   Serial.println("HEY");
+  //   lastCompassUpdate = currentMillis;
+    currentHeading = compass.getAzimuth();
+  //}
+ // currentHeading = displayCompassInfo();    // get our current heading
+  calcDesiredTurn();                       // calculate how we would optimatally turn
+  delay(100);
+}
+
+void displayGpsInfo(void)
+{
+  Serial.print("hey");
+  //unsigned long time1 = millis();
+  currentLat = gps.location.lat();
+  currentLong = gps.location.lng();
+  //Prints the location if lat-lng information was recieved
+
+  distanceToWaypoint();
+  courseToWaypoint();
+
+  Serial.print(F("Location: ")); 
+  if (gps.location.isValid())
+  {
+    Serial.print(gps.location.lat(), 5);
+    Serial.print(F(","));
+    Serial.print(gps.location.lng(), 5);
+  }
+  //Prints invalid if no information was recieved in regards to location.
+  else
+  {
+    Serial.print(F("INVALID"));
+  }
+
+  Serial.print(F("  Date/Time: "));
+  //Prints the recieved GPS module date if it was decoded in a vaild response.
+  if (gps.date.isValid())
+  {
+    Serial.print(gps.date.month());
+    Serial.print(F("/"));
+    Serial.print(gps.date.day());
+    Serial.print(F("/"));
+    Serial.print(gps.date.year());
+  }
+  else
+  {
+    //Prints invalid oterwise.
+    Serial.print(F("INVALID"));
+  }
+
+  Serial.print(F(" "));
+  // prints the recieved GPS Module time if it was decoded in a valid response.
+  if (gps.time.isValid())
+  {
+    if (gps.time.hour() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.hour());
+    Serial.print(F(":"));
+    if (gps.time.minute() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.minute());
+    Serial.print(F(":"));
+    if (gps.time.second() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.second());
+    Serial.print(F("."));
+    if (gps.time.centisecond() < 10) Serial.print(F("0"));
+    Serial.print(gps.time.centisecond());
+  }
+  else
+  {
+    //Print invalid oterwise.
+    Serial.print(F("INVALID"));
+
+  }
+  unsigned long time2 = millis();
+  Serial.println();
+  {
+    displayCompassInfo();
+  }
+  unsigned long time3 = millis();
+
+  // Serial.print("gps info time: ");
+  // Serial.println(time2-time1);
+  // Serial.print("compass info time: ");
+  // Serial.println(time3-time2);
+
+}
+
+int displayCompassInfo(void)
+{
+  // all function for compass
+  	int x, y, z, a, b;
+	char myArray[3];
+	
+	compass.read();
+  
+	x = compass.getX();
+	y = compass.getY();
+	z = compass.getZ();
+	
+	a = compass.getAzimuth();
+	
+	b = compass.getBearing(a);
+
+	compass.getDirection(myArray, a);
+
+ 
+  
+	Serial.print("X: ");
+	Serial.print(x);
+
+	Serial.print(" Y: ");
+	Serial.print(y);
+
+	// Serial.print(" Z: ");
+	//Serial.print(z);
+
+	Serial.print(" Azimuth: ");
+	Serial.print(a);
+
+	Serial.print(" Bearing: ");
+	Serial.print(b);
+
+	Serial.print(" Direction: ");
+	Serial.print(myArray[0]);
+	Serial.print(myArray[1]);
+	Serial.print(myArray[2]);
+
+
+
+//  float heading = atan2(y, x);
+
+//  //float declinationAngle = 0.017;
+//  //heading += declinationAngle;
+
+//   // Correct for when signs are reversed.
+//   if(heading < 0)
+//     heading += 2*PI;
+    
+//   // Check for wrap due to addition of declination.
+//   if(heading > 2*PI)
+//     heading -= 2*PI;
+   
+//   // Convert radians to degrees for readability.
+//   float headingDegrees = heading * 180/M_PI; 
+
+//   return ((int)headingDegrees); 
+  
+delay(1000);
+
+}
+
+void calcDesiredTurn(void)
+{
+    // calculate where we need to turn to head to the destination
+    headingError = targetHeading - currentHeading;
+
+    // Adjust for compass wrap
+    if (headingError < -180)
+        headingError += 360;
+    if (headingError > 180)
+        headingError -= 360;
+
+    // Print debugging information
+    Serial.print("Current Heading: ");
+    Serial.println(currentHeading);
+    Serial.print("Target Heading: ");
+    Serial.println(targetHeading);
+    Serial.print("Heading Error: ");
+    Serial.println(headingError);
+
+    // Calculate which way to turn to intercept the targetHeading
+    if (abs(headingError) <= HEADING_TOLERANCE)
+        Forward();
+    else if (headingError < 0)
+        Leftturn();
+    else if (headingError > 0)
+        Rightturn();
+    else
+        Forward();
+}
+
+
+void nextWaypoint(void)
+{
+  Serial.println("something");
+  waypointNumber++;
+  targetLat = waypointList[waypointNumber].getLat();
+  targetLong = waypointList[waypointNumber].getLong();
+   Serial.print("Target Coordinate: ");
+   Serial.print(targetLat, 5);
+   Serial.print(", ");
+   Serial.println(targetLong, 5);
+  
+  if ((targetLat == 0 && targetLong == 0) || waypointNumber >= NUMBER_WAYPOINTS)    // last waypoint reached? 
+    {
+      Stop();
+      //loopForever();
+    }
+    
+   displayGpsInfo();
+   distanceToTarget = originalDistanceToTarget = distanceToWaypoint();
+   courseToWaypoint();
+   
+}  // nextWaypoint()
+int distanceToWaypoint() 
+{
+  
+  float delta = radians(currentLong - targetLong);
+  float sdlong = sin(delta);
+  float cdlong = cos(delta);
+  float lat1 = radians(currentLat);
+  float lat2 = radians(targetLat);
+  float slat1 = sin(lat1);
+  float clat1 = cos(lat1);
+  float slat2 = sin(lat2);
+  float clat2 = cos(lat2);
+  delta = (clat1 * slat2) - (slat1 * clat2 * cdlong); 
+  delta = sq(delta); 
+  delta += sq(clat2 * sdlong); 
+  delta = sqrt(delta); 
+  float denom = (slat1 * slat2) + (clat1 * clat2 * cdlong); 
+  delta = atan2(delta, denom); 
+  distanceToTarget =  delta * 6372795; 
+   
+  // check to see if we have reached the current waypoint
+  if (distanceToTarget <= WAYPOINT_DIST_TOLERANE)
+    nextWaypoint();
+    
+  return distanceToTarget;
+}  // distanceToWaypoint()
+
+int courseToWaypoint() 
+{
+  float dlon = radians(targetLong-currentLong);
+  float cLat = radians(currentLat);
+  float tLat = radians(targetLat);
+  float a1 = sin(dlon) * cos(tLat);
+  float a2 = sin(cLat) * cos(tLat) * cos(dlon);
+  a2 = cos(cLat) * sin(tLat) - a2;
+  a2 = atan2(a1, a2);
+  if (a2 < 0.0)
+  {
+    a2 += TWO_PI;
+  }
+  targetHeading = degrees(a2);
+  return targetHeading;
+}   // courseToWaypoint()
+
+
+void Forward()
+{
+  motor1.run(FORWARD);
+  motor2.run(FORWARD);
+  motor3.run(FORWARD);
+  motor4.run(FORWARD); 
+  delay(100);
+}
+void Leftturn()
+{
+  motor1.run(RELEASE);
+  motor2.run(FORWARD);
+  motor3.run(FORWARD);
+  motor4.run(RELEASE); 
+  delay(100);
+}
+
+void Rightturn()
+{
+  motor1.run(FORWARD);
+  motor2.run(RELEASE);
+  motor3.run(RELEASE);
+  motor4.run(FORWARD); 
+  delay(100);
+}
+void Stop()
+{
+  motor1.run(RELEASE);
+  motor2.run(RELEASE);
+  motor3.run(RELEASE);
+  motor4.run(RELEASE); 
+  delay(100);
+}
+void loopForever(void)
+{
+  while (1)
+    ;
+}
