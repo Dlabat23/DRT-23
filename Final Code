@@ -254,7 +254,7 @@ void calcDesiredTurn(void)
     Serial.print(headingError);
     // calculate which way to turn to intercept the targetHeading, adjustments were made due to compass calibration, usually the heading
     //error would be 0 when facing waypoint +/- 10
-    //this would be +/- 20
+    //this would be +/- 10 also
     if (abs(headingError) <= 50 && abs(headingError) >=30)      // if within tolerance, don't turn
       Forward();  
     else if (headingError < 30)
